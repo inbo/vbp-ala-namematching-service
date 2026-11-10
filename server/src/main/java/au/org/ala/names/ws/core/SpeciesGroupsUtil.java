@@ -2,6 +2,7 @@ package au.org.ala.names.ws.core;
 
 import au.org.ala.names.model.NameSearchResult;
 import au.org.ala.names.search.ALANameSearcher;
+import au.org.ala.names.search.ParentSynonymChildException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -129,6 +130,22 @@ public class SpeciesGroupsUtil {
     }
 
 
+    /**
+     * Look up a group name in the index.
+     * <p>
+     * Some backbones (eg. the Catalogue of Life based GBIF backbone) contain a parent name that is a synonym
+     * of one of its children. The searcher signals this with a {@link ParentSynonymChildException};
+     * like the searcher's own default handling, use the parent result in that case instead of failing.
+     */
+    private NameSearchResult lookup(String name, au.org.ala.names.model.RankType rank) throws Exception {
+        try {
+            return rank == null ? this.nameIndex.searchForRecord(name) : this.nameIndex.searchForRecord(name, rank);
+        } catch (ParentSynonymChildException ex) {
+            log.warn("Species group name {} ({}): parent is a synonym of child, using parent {}", name, rank, ex.getParentResult());
+            return ex.getParentResult();
+        }
+    }
+
     private SpeciesGroup createSpeciesGroup(String title, String rank,  List<String> values,  List<String> excludedValues, String parent) throws Exception {
 
         List<LftRgtValues> lftRgts = new ArrayList<LftRgtValues>();
@@ -136,7 +153,7 @@ public class SpeciesGroupsUtil {
         if (excludedValues != null && !excludedValues.isEmpty()) {
             for (String excludedValue : excludedValues) {
 
-                NameSearchResult snr = nameIndex.searchForRecord(excludedValue);
+                NameSearchResult snr = this.lookup(excludedValue, null);
 
                 if (snr != null) {
                     if (snr.isSynonym())
@@ -156,7 +173,7 @@ public class SpeciesGroupsUtil {
 
         for (String v: values) {
 
-            NameSearchResult snr = this.nameIndex.searchForRecord(v, au.org.ala.names.model.RankType.getForName(rank));
+            NameSearchResult snr = this.lookup(v, au.org.ala.names.model.RankType.getForName(rank));
 
             if (snr != null) {
                 if (snr.isSynonym())
